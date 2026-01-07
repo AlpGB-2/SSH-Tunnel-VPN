@@ -4,10 +4,10 @@ import select
 import socketserver
 
 # --- CONFIGURATION (Change these to your home info) ---
-HOME_IP = "YOUR_HOME_PUBLIC_IP" 
+HOME_IP = "192.168.1.1" 
 SSH_PORT = 22
-SSH_USER = "your_username"
-SSH_PASS = "your_password"
+SSH_USER = "alpbayrak"
+SSH_PASS = "9999"
 REMOTE_BIND_ADDRESS = "127.0.0.1"
 REMOTE_PORT = 8080 # This is the port Spotify will use
 # ------------------------------------------------------
