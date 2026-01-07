@@ -1,77 +1,42 @@
-import paramiko
 import os
 import subprocess
 import time
 
 # --- CONFIGURATION ---
-HOME_IP = "192.168.1.75" # CHANGE THIS BEFORE SCHOOL
+HOME_IP = "192.168.1.75" 
 SSH_USER = "alpbayrak"
-SSH_PASS = "9999"
 LOCAL_PROXY_PORT = 9090
 # ---------------------
-print("Updated: 1")
 
-def get_active_interfaces():
-    """Returns a list of network services that are currently 'Hardware Port' active."""
-    active_services = []
-    try:
-        # Get all network services
-        output = subprocess.check_output(["networksetup", "-listallnetworkservices"]).decode()
-        services = [s.strip() for s in output.split('\n') if s and "*" not in s]
-        
-        for service in services:
-            # Check if the service has an IP address (meaning it's active)
-            info = subprocess.check_output(["networksetup", "-getinfo", service]).decode()
-            if "IP address:" in info and "is not set" not in info:
-                active_services.append(service)
-    except Exception as e:
-        print(f"[!] Error detecting interfaces: {e}")
-    return active_services
-
-def set_proxy_state(services, state):
+def set_proxy(state, services):
     status = "on" if state else "off"
-    for service in services:
-        print(f"[*] Turning System SOCKS Proxy {status} for: {service}...")
-        try:
-            subprocess.run(["networksetup", "-setsocksfirewallproxy", service, "127.0.0.1", str(LOCAL_PROXY_PORT)])
-            subprocess.run(["networksetup", "-setsocksfirewallproxystate", service, status])
-            subprocess.run(["networksetup", "-setproxybypassdomains", service, "Empty"])
-        except Exception as e:
-            print(f"[!] Failed to set proxy on {service}: {e}")
+    for s in services:
+        subprocess.run(["networksetup", "-setsocksfirewallproxy", s, "127.0.0.1", str(LOCAL_PROXY_PORT)])
+        subprocess.run(["networksetup", "-setsocksfirewallproxystate", s, status])
+        subprocess.run(["networksetup", "-setproxybypassdomains", s, "Empty"])
 
 def start_tunnel():
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    # 1. Get active interfaces
+    output = subprocess.check_output(["networksetup", "-listallnetworkservices"]).decode()
+    services = [s.strip() for s in output.split('\n') if s and "*" not in s and "is not set" not in subprocess.check_output(["networksetup", "-getinfo", s.strip()]).decode()]
     
-    active_services = get_active_interfaces()
-    if not active_services:
-        print("[!] No active internet connection (WiFi or Ethernet) detected!")
-        return
-
     try:
-        print(f"Connecting to {HOME_IP}...")
-        client.connect(HOME_IP, username=SSH_USER, password=SSH_PASS)
+        # 2. Turn on system proxy
+        set_proxy(True, services)
         
-        # Apply proxy to all active interfaces (WiFi, Ethernet, etc.)
-        set_proxy_state(active_services, True)
+        print(f"[*] Opening Tunnel to {HOME_IP}...")
+        # -D 9090: Creates the SOCKS5 proxy on port 9090
+        # -N: Do not execute a remote command (keep tunnel open)
+        # -o ConnectTimeout=5: Don't hang forever if home is offline
+        cmd = f"ssh -D {LOCAL_PROXY_PORT} -N {SSH_USER}@{HOME_IP}"
         
-        print(f"[*] SUCCESS! Tunneled services: {', '.join(active_services)}")
-        print("[*] Press Ctrl+C to stop and revert settings.")
+        print("[!] BE READY: Type your home Mac password in the terminal if asked.")
+        os.system(cmd)
         
-        while True:
-            if not client.get_transport().is_active():
-                print("[!] Connection lost.")
-                break
-            time.sleep(1)
-            
     except KeyboardInterrupt:
-        print("\n[*] Stopping...")
-    except Exception as e:
-        print(f"[!] Tunnel Error: {e}")
+        print("\n[*] Shutting down...")
     finally:
-        # Re-detect interfaces to ensure we clean up everything
-        set_proxy_state(active_services, False)
-        client.close()
+        set_proxy(False, services)
 
 if __name__ == "__main__":
     start_tunnel()
