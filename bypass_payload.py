@@ -9,7 +9,7 @@ SSH_PORT = 22
 SSH_USER = "alpbayrak"
 SSH_PASS = "9999"
 REMOTE_BIND_ADDRESS = "127.0.0.1"
-REMOTE_PORT = 8080 # This is the port Spotify will use
+REMOTE_PORT = 9090 # This is the port Spotify will use
 # ------------------------------------------------------
 
 def forward_handler(chan, host, port):
