@@ -1,25 +1,28 @@
-import requests
-import subprocess
 import os
+import subprocess
+import requests
+import pexpect
 import time
+import sys
 
-# --- DYNAMIC CONFIG ---
-# URL to the text file where your Home Mac reports its IP
+# --- CONFIGURATION ---
+# The URL where your Home Mac reports its public IP
 IP_FILE_URL = "https://raw.githubusercontent.com/AlpGB-2/SSH-Tunnel-VPN/main/home_ip.txt"
 SSH_USER = "alpbayrak"
 LOCAL_PROXY_PORT = 9090
+# ---------------------
 
 def get_latest_home_ip():
+    """Fetches the current home IP from GitHub."""
     try:
-        # Pull the IP that your Home Mac just reported
-        r = requests.get(IP_FILE_URL)
+        r = requests.get(IP_FILE_URL, timeout=5)
         return r.text.strip()
-    except:
-        print("[!] Could not fetch public IP, falling back to local.")
-        return "192.168.1.75" # Fallback to local IP if fetch fails
+    except Exception as e:
+        print(f"[!] Could not fetch IP from GitHub: {e}")
+        return "192.168.1.75"  # Fallback to local if fetch fails
 
-def get_active_interfaces():
-    """Identifies active network services (Wi-Fi, Ethernet, etc.)."""
+def get_active_services():
+    """Finds all network services currently connected to the internet."""
     active_services = []
     try:
         output = subprocess.check_output(["networksetup", "-listallnetworkservices"]).decode()
@@ -33,44 +36,59 @@ def get_active_interfaces():
     return active_services
 
 def set_proxy_state(services, state):
+    """Toggles the SOCKS proxy on or off for all active services."""
     status = "on" if state else "off"
     for service in services:
-        print(f"[*] Turning System SOCKS Proxy {status} for: {service}...")
+        print(f"[*] Turning SOCKS Proxy {status} for: {service}...")
         try:
+            # Set the proxy address and port
             subprocess.run(["networksetup", "-setsocksfirewallproxy", service, "127.0.0.1", str(LOCAL_PROXY_PORT)])
+            # Toggle the state
             subprocess.run(["networksetup", "-setsocksfirewallproxystate", service, status])
-            # Force all traffic (including DNS) through the proxy
+            # Clear bypass domains to ensure all traffic goes through the tunnel
             subprocess.run(["networksetup", "-setproxybypassdomains", service, "Empty"])
         except Exception as e:
-            print(f"[!] Failed to set proxy on {service}: {e}")
+            print(f"[!] Failed to adjust {service}: {e}")
 
-def start_tunnel():
+def run_tunnel():
     home_ip = get_latest_home_ip()
-    active_services = get_active_interfaces()
-    
+    active_services = get_active_services()
+    # Get the password passed from the GUI Launcher
+    vpn_password = os.environ.get("VPN_PASS", "")
+
     if not active_services:
-        print("[!] No active internet connection detected!")
+        print("[!] No active internet connection (Ethernet/Wi-Fi) found!")
         return
 
     try:
-        # Apply proxy to all active interfaces
+        # 1. Enable Proxy
         set_proxy_state(active_services, True)
         
-        print(f"[*] Opening Tunnel to {home_ip}...")
-        # -D 9090: Creates local SOCKS5 proxy
-        # -N: Keeps the pipe open without executing remote commands
-        cmd = f"ssh -D {LOCAL_PROXY_PORT} -N {SSH_USER}@{home_ip}"
+        print(f"[*] Connecting to Home Mac at {home_ip}...")
         
-        print("[!] BE READY: Type your home Mac password if prompted.")
-        os.system(cmd)
+        # 2. Start SSH Tunnel with Pexpect to handle password
+        ssh_cmd = f"ssh -D {LOCAL_PROXY_PORT} -N {SSH_USER}@{home_ip} -o StrictHostKeyChecking=no"
+        child = pexpect.spawn(ssh_cmd, encoding='utf-8')
         
+        # Watch for the password prompt
+        index = child.expect(['[Pp]assword:', pexpect.EOF, pexpect.TIMEOUT], timeout=10)
+        
+        if index == 0:
+            child.sendline(vpn_password)
+            print("[✓] Password sent. Tunnel is now ACTIVE.")
+            # Keep the process alive
+            child.expect(pexpect.EOF)
+        else:
+            print("[!] SSH connection failed or timed out.")
+
     except KeyboardInterrupt:
-        print("\n[*] Shutting down...")
+        print("\n[*] User interrupted. Shutting down...")
     except Exception as e:
-        print(f"[!] Tunnel Error: {e}")
+        print(f"[!!] Tunnel Error: {e}")
     finally:
-        # Cleanup: Turn proxy off so internet isn't broken
+        # 3. Cleanup: Always turn off proxy so internet isn't broken
+        print("[*] Reverting network settings...")
         set_proxy_state(active_services, False)
 
 if __name__ == "__main__":
-    start_tunnel()
+    run_tunnel()
