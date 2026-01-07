@@ -9,6 +9,7 @@ SSH_USER = "alpbayrak"
 SSH_PASS = "9999"
 LOCAL_PROXY_PORT = 9090
 # ---------------------
+print("Updated: 1")
 
 def get_active_interfaces():
     """Returns a list of network services that are currently 'Hardware Port' active."""
@@ -34,6 +35,7 @@ def set_proxy_state(services, state):
         try:
             subprocess.run(["networksetup", "-setsocksfirewallproxy", service, "127.0.0.1", str(LOCAL_PROXY_PORT)])
             subprocess.run(["networksetup", "-setsocksfirewallproxystate", service, status])
+            subprocess.run(["networksetup", "-setproxybypassdomains", service, "Empty"])
         except Exception as e:
             print(f"[!] Failed to set proxy on {service}: {e}")
 
