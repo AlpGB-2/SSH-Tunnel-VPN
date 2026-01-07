@@ -4,7 +4,7 @@ import select
 import socketserver
 
 # --- CONFIGURATION (Change these to your home info) ---
-HOME_IP = "192.168.1.1" 
+HOME_IP = "192.168.1.75" 
 SSH_PORT = 22
 SSH_USER = "alpbayrak"
 SSH_PASS = "9999"
